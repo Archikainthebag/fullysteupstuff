@@ -97,18 +97,18 @@ jobs:
           Write-Host "Automated install not possible due to GitHub runner network restrictions."
 
       - name: Create Downloads\saranggggg and add files for RDP user
+        shell: powershell
         run: |
-          # Target folder under RDP user's Downloads
           $rdpUser = "RDP"
           $downloadsDir = "C:\Users\$rdpUser\Downloads\saranggggg"
-          # Ensure Downloads folder exists (Downloads may not exist by default)
+
           if (-not (Test-Path "C:\Users\$rdpUser\Downloads")) {
             New-Item -Path "C:\Users\$rdpUser\Downloads" -ItemType Directory -Force | Out-Null
           }
           New-Item -Path $downloadsDir -ItemType Directory -Force | Out-Null
 
-          # Create humanex.py (sample content)
-          $humanexPy = @"
+          # Create humanex.py
+          @"
 import sys
 import time
 # sample humanex placeholder
@@ -116,28 +116,22 @@ def main():
     print('humanex placeholder')
 if __name__ == '__main__':
     main()
-"@
-          $humanexPyPath = Join-Path $downloadsDir "humanex.py"
-          $humanexPy | Out-File -FilePath $humanexPyPath -Encoding utf8 -Force
+"@ | Out-File -FilePath (Join-Path $downloadsDir "humanex.py") -Encoding utf8 -Force
 
-          # Create user_agent.txt (sample user agents, one per line)
-          $uaContent = @"
+          # Create user_agent.txt
+          @"
 Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36
 Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0
-"@
-          $uaPath = Join-Path $downloadsDir "user_agent.txt"
-          $uaContent | Out-File -FilePath $uaPath -Encoding utf8 -Force
+"@ | Out-File -FilePath (Join-Path $downloadsDir "user_agent.txt") -Encoding utf8 -Force
 
-          # Create proxy.txt (sample proxy lines)
-          $proxyContent = @"
+          # Create proxy.txt
+          @"
 127.0.0.1:8080
 # add proxies in ip:port format, one per line
-"@
-          $proxyPath = Join-Path $downloadsDir "proxy.txt"
-          $proxyContent | Out-File -FilePath $proxyPath -Encoding utf8 -Force
+"@ | Out-File -FilePath (Join-Path $downloadsDir "proxy.txt") -Encoding utf8 -Force
 
-          # Create insuranceRPA.json (sample JSON)
-          $jsonContent = @"
+          # Create insuranceRPA.json
+          @"
 {
   "name": "insuranceRPA",
   "version": "1.0",
@@ -146,9 +140,7 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0
     "max_threads": 5
   }
 }
-"@
-          $jsonPath = Join-Path $downloadsDir "insuranceRPA.json"
-          $jsonContent | Out-File -FilePath $jsonPath -Encoding utf8 -Force
+"@ | Out-File -FilePath (Join-Path $downloadsDir "insuranceRPA.json") -Encoding utf8 -Force
 
           Write-Host "Created folder and files at: $downloadsDir"
           Get-ChildItem -Path $downloadsDir | ForEach-Object { Write-Host " - $($_.Name)" }
@@ -156,14 +148,9 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0
       - name: Install Python packages + Playwright (system wide)
         shell: powershell
         run: |
-          # Update pip and install packages in the runner's Python
-          # Use python -m pip to avoid ambiguity. Then run Playwright installer.
           python -m pip install --upgrade pip
           python -m pip install requests PyQt5 playwright
-          # Playwright needs browser binaries installed:
-          # Use python -m playwright install to install browsers for Playwright Python
           python -m playwright install
-
           Write-Host "Installed: requests, PyQt5, playwright and Playwright browsers."
 
       - name: Verify RDP
