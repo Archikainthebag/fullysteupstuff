@@ -1,39 +1,38 @@
 name: RDP
+
 on:
   workflow_dispatch:
+
 jobs:
   secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 3600 # Max 6 hours on GitHub-hosted runners
+    timeout-minutes: 3600
+
     steps:
       - name: Enable RDP + Firewall + Prevent Disconnects
+        shell: powershell
         run: |
-          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          # Allow RDP through firewall
           netsh advfirewall firewall delete rule name="AllowRDP" >$null 2>&1
           netsh advfirewall firewall add rule name="AllowRDP" dir=in action=allow protocol=TCP localport=3389
-          # Prevent session timeouts
           $regPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
           Set-ItemProperty -Path $regPath -Name "MaxDisconnectionTime" -Value 0 -Type DWord -Force
           Set-ItemProperty -Path $regPath -Name "MaxIdleTime" -Value 0 -Type DWord -Force
           Set-ItemProperty -Path $regPath -Name "MaxSessionTime" -Value 0 -Type DWord -Force
-          # Disable screensaver lock
           Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeOut" -Value "0" -Force
           Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaverIsSecure" -Value "0" -Force
           Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "SCRNSAVE.EXE" -Value "" -Force
-          # Disable power saving / hibernate
           powercfg /change standby-timeout-ac 0
           powercfg /change monitor-timeout-ac 0
           powercfg /change disk-timeout-ac 0
           powercfg /hibernate off
-          # Restart RDP service
           Restart-Service TermService -Force
 
       - name: Create RDP User (Password = 1234)
+        shell: powershell
         run: |
           secedit /export /cfg $env:TEMP\secpol.cfg
           (Get-Content $env:TEMP\secpol.cfg).Replace("PasswordComplexity = 1","PasswordComplexity = 0") | Set-Content $env:TEMP\secpol.cfg
@@ -48,6 +47,7 @@ jobs:
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
 
       - name: Install Tailscale
+        shell: powershell
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
@@ -56,6 +56,7 @@ jobs:
           Remove-Item $installerPath -Force
 
       - name: Start Tailscale
+        shell: powershell
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
           $tsIP = $null
@@ -69,6 +70,7 @@ jobs:
           Write-Host "Tailscale IP: $tsIP"
 
       - name: Start SOCKS5 Proxy (gost) on port 1080
+        shell: powershell
         run: |
           $tsIP = $env:TAILSCALE_IP
           if (-not $tsIP) { Write-Error "TAILSCALE_IP not found"; exit 1 }
@@ -84,76 +86,28 @@ jobs:
           Start-Process -FilePath $exePath -ArgumentList '-L=:1080' -WindowStyle Hidden
           Write-Host "SOCKS5 proxy listening on: $tsIP:1080"
 
-      - name: Install Visual Studio Code
+      - name: Install Visual Studio Code + Python Deps
+        shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          choco install -y vscode
+          choco install -y vscode python
+          pip install requests PyQt5 playwright && playwright install
 
-      - name: AdsPower Notice
-        run: |
-          Write-Host "⚠️ AdsPower installer requires manual download from https://www.adspower.com/download"
-          Write-Host "Automated install not possible due to GitHub runner network restrictions."
-
-      - name: Create Downloads\saranggggg and add files for RDP user
+      - name: Create Project Folder and Files
         shell: powershell
         run: |
-          $rdpUser = "RDP"
-          $downloadsDir = "C:\Users\$rdpUser\Downloads\saranggggg"
-
-          if (-not (Test-Path "C:\Users\$rdpUser\Downloads")) {
-            New-Item -Path "C:\Users\$rdpUser\Downloads" -ItemType Directory -Force | Out-Null
-          }
-          New-Item -Path $downloadsDir -ItemType Directory -Force | Out-Null
-
-          # Create humanex.py
-          @"
-import sys
-import time
-# sample humanex placeholder
-def main():
-    print('humanex placeholder')
-if __name__ == '__main__':
-    main()
-"@ | Out-File -FilePath (Join-Path $downloadsDir "humanex.py") -Encoding utf8 -Force
-
-          # Create user_agent.txt
-          @"
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0
-"@ | Out-File -FilePath (Join-Path $downloadsDir "user_agent.txt") -Encoding utf8 -Force
-
-          # Create proxy.txt
-          @"
-127.0.0.1:8080
-# add proxies in ip:port format, one per line
-"@ | Out-File -FilePath (Join-Path $downloadsDir "proxy.txt") -Encoding utf8 -Force
-
-          # Create insuranceRPA.json
-          @"
-{
-  "name": "insuranceRPA",
-  "version": "1.0",
-  "settings": {
-    "timeout": 30,
-    "max_threads": 5
-  }
-}
-"@ | Out-File -FilePath (Join-Path $downloadsDir "insuranceRPA.json") -Encoding utf8 -Force
-
-          Write-Host "Created folder and files at: $downloadsDir"
-          Get-ChildItem -Path $downloadsDir | ForEach-Object { Write-Host " - $($_.Name)" }
-
-      - name: Install Python packages + Playwright (system wide)
-        shell: powershell
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install requests PyQt5 playwright
-          python -m playwright install
-          Write-Host "Installed: requests, PyQt5, playwright and Playwright browsers."
+          $downloadPath = [Environment]::GetFolderPath("UserProfile") + "\Downloads\saranggggg"
+          New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
+          New-Item -Path "$downloadPath\humanex.py" -ItemType File -Force | Out-Null
+          New-Item -Path "$downloadPath\user_agent.txt" -ItemType File -Force | Out-Null
+          New-Item -Path "$downloadPath\proxy.txt" -ItemType File -Force | Out-Null
+          New-Item -Path "$downloadPath\insuranceRPA.json" -ItemType File -Force | Out-Null
+          Write-Host "Created folder and files inside Downloads\saranggggg"
 
       - name: Verify RDP
+        shell: powershell
         run: |
           $tsIP = $env:TAILSCALE_IP
           Write-Host "Tailscale IP: $tsIP"
@@ -162,6 +116,7 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0
           Write-Host "✅ RDP Port reachable"
 
       - name: Keep Session Alive
+        shell: powershell
         run: |
           $tsIP = $env:TAILSCALE_IP
           Write-Host "`n=== RDP ACCESS ==="
@@ -170,7 +125,6 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0
           Write-Host "Password: 1234"
           Write-Host "SOCKS5 Proxy: $tsIP:1080"
           Write-Host "VSCode: Installed"
-          Write-Host "AdsPower: Manual download required"
           Write-Host "==================`n"
           while ($true) {
             Write-Host "[$(Get-Date)] RDP Active"
