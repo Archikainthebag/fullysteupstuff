@@ -93,7 +93,8 @@ jobs:
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           choco install -y vscode python
-          pip install requests PyQt5 playwright && playwright install
+          pip install requests PyQt5 playwright
+          playwright install
 
       - name: Create Project Folder and Files
         shell: powershell
